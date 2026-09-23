@@ -1,4 +1,4 @@
-import { ChangeEvent, useState } from "react";
+import { ChangeEvent, ReactNode, useState } from "react";
 import {
   ConflictGroup,
   Fixture,
@@ -21,7 +21,28 @@ import {
 
 interface Notice {
   kind: "ok" | "warn" | "error";
-  text: string;
+  /** 文本片段；含灯具 id 的部分必须用 <IdText> 保持逐字节身份。 */
+  text: ReactNode;
+}
+
+/**
+ * 逐字节身份渲染灯具 id：
+ * - 空格（id 中唯一合法的空白字符 U+0020）显示为可见符号 ␣，
+ *   使 "A"、" A"、"A "、"  "、"A  B" 与 "A B" 视觉上明确可分；
+ * - white-space: pre 保留连续/首尾空格的布局宽度作为第二重保障；
+ * - title 给出 JSON 引用形式（逗号、引号、反斜杠经转义），可复核精确字节。
+ * 所有事件回调与 data-id 始终使用原始 id，绝不参与展示变换。
+ */
+export function IdText({ id, className }: { id: string; className?: string }) {
+  return (
+    <span
+      className={className ? `id-text ${className}` : "id-text"}
+      title={JSON.stringify(id)}
+      data-id={id}
+    >
+      {id.replace(/ /g, "␣")}
+    </span>
+  );
 }
 
 /** 确定性演示补丁：链式组、端点相接、嵌套、孤立灯具各若干。 */
@@ -57,7 +78,7 @@ function IdList({ ids, onSelect }: { ids: string[]; onSelect: (id: string) => vo
     <div className="chips">
       {ids.map((id) => (
         <button key={id} className="chip" onClick={() => onSelect(id)}>
-          {id}
+          <IdText id={id} />
         </button>
       ))}
     </div>
@@ -129,7 +150,15 @@ export default function App() {
     if (!engine) return;
     const f = engine.getFixture(id);
     if (!f) {
-      setNotice({ kind: "warn", text: `未找到灯具 “${id}”。` });
+      // 查找失败：只提示，不改变当前选择、试移结果或补丁
+      setNotice({
+        kind: "warn",
+        text: (
+          <>
+            未找到灯具 <IdText id={id} />（id 逐字符匹配，包括首尾与连续空格，空串不是合法 id）。
+          </>
+        ),
+      });
       return;
     }
     setSelectedId(id);
@@ -172,7 +201,12 @@ export default function App() {
     setReviewBaseline([]);
     setNotice({
       kind: "ok",
-      text: `已提交：${selectedId} → universe ${r.targetUniverse} 起始 ${r.targetStart}，冲突组已重算。`,
+      text: (
+        <>
+          已提交：<IdText id={selectedId} /> → universe {r.targetUniverse} 起始{" "}
+          {r.targetStart}，冲突组已重算。
+        </>
+      ),
     });
   }
 
@@ -248,6 +282,10 @@ export default function App() {
             ? `${fixtureCount} 具灯具 · ${groups.length} 个冲突组`
             : "空补丁台 — 请导入 1–200000 项的 JSON 数组"}
         </p>
+        <p className="id-legend muted">
+          id 逐字节显示：<span className="id-text">␣</span> 表示 id 中的真实空格（U+0020）；
+          悬停可查看 JSON 引用形式。首尾/连续空格均为 id 的合法组成部分。
+        </p>
       </header>
 
       {importError ? (
@@ -276,7 +314,7 @@ export default function App() {
                       className={id === selectedId ? "chip selected" : "chip"}
                       onClick={() => selectFixture(id)}
                     >
-                      {id}
+                      <IdText id={id} />
                     </button>
                   ))}
                 </div>
@@ -296,9 +334,10 @@ export default function App() {
             <input
               value={lookup}
               onChange={(e) => setLookup(e.target.value)}
-              placeholder="按 id 查找灯具"
+              placeholder="按 id 查找灯具（空格是 id 的一部分，不做修剪）"
             />
-            <button onClick={() => selectFixture(lookup.trim())} disabled={!engine}>
+            {/* 逐字符查找：不 trim 首尾空格，不折叠连续空白；空串不是合法 id */}
+            <button onClick={() => selectFixture(lookup)} disabled={!engine || lookup.length === 0}>
               选择
             </button>
           </div>
@@ -307,7 +346,9 @@ export default function App() {
               <dl className="fixture">
                 <div>
                   <dt>id</dt>
-                  <dd>{selected.id}</dd>
+                  <dd>
+                    <IdText id={selected.id} />
+                  </dd>
                 </div>
                 <div>
                   <dt>universe</dt>
@@ -442,7 +483,9 @@ export default function App() {
                       <td className={p.adopted ? "ok-text" : "warn-text"}>
                         {p.adopted ? "采纳" : "拒绝"}
                       </td>
-                      <td>{p.id}</td>
+                      <td>
+                        <IdText id={p.id} />
+                      </td>
                       <td>{formatPos(p.baseline)}</td>
                       <td>{formatPos(p.candidate)}</td>
                     </tr>
@@ -452,10 +495,21 @@ export default function App() {
             ) : (
               <p className="muted">候选与基线位置完全一致，无需修订。</p>
             )}
-            <p className="muted">
-              采纳 id（compareUtf8 序）：
-              {review.adoptedIds.length > 0 ? review.adoptedIds.join(", ") : "（无）"}
-            </p>
+            <div className="adopted">
+              <span className="muted">采纳 id（compareUtf8 序）：</span>
+              {review.adoptedIds.length > 0 ? (
+                <span className="chips">
+                  {/* 逐项展示，不用逗号拼接：id 自身可含逗号、引号或空格 */}
+                  {review.adoptedIds.map((id) => (
+                    <span key={id} className="chip adopt-chip">
+                      <IdText id={id} />
+                    </span>
+                  ))}
+                </span>
+              ) : (
+                <span className="muted">（无）</span>
+              )}
+            </div>
           </>
         ) : reviewError ? null : (
           <p className="muted">选择一份候选修订以开始复核；重选任意补丁立即撤销当前结论。</p>

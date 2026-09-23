@@ -309,3 +309,34 @@ tr.row-adopt td:first-child {
 tr.row-reject {
   opacity: 0.75;
 }
+
+/* 灯具 id 的逐字节身份渲染：空格显示为 ␣，pre 保留首尾/连续空格布局 */
+.id-text {
+  white-space: pre;
+  border-radius: 3px;
+}
+
+.chip .id-text {
+  font-weight: inherit;
+}
+
+.id-legend {
+  margin: 0;
+  width: 100%;
+  font-size: 12px;
+}
+
+/* 采纳 id 逐项展示，避免逗号拼接在 id 含逗号/引号时无法辨认 */
+.adopted {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.adopt-chip {
+  background: rgba(76, 195, 138, 0.15);
+  border-color: var(--ok);
+}
