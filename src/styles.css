@@ -81,6 +81,7 @@ button:disabled {
   padding: 8px 12px;
   border-radius: 4px;
   border: 1px solid;
+  white-space: pre-wrap; /* 警告文案中的 id 逐字节保留首尾/连续空格 */
 }
 
 .banner.error {
@@ -177,6 +178,72 @@ button:disabled {
   color: #101418;
   border-color: var(--accent);
   font-weight: 700;
+}
+
+/* ---- 逐字节 id 渲染：空格可见且不折叠 ---- */
+
+.id-text {
+  /* pre-wrap 保留前导/尾随/连续空格，长 id 仍可换行 */
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* 每个空格是一个带底纹的 inline-block：中点标记 + 1 字符固定宽度 */
+.id-space {
+  display: inline-block;
+  white-space: pre;
+  min-width: 0.62em;
+  background: rgba(240, 168, 50, 0.22);
+  border-radius: 2px;
+  position: relative;
+  text-align: center;
+  line-height: inherit;
+}
+
+.id-space::after {
+  content: "·";
+  position: absolute;
+  inset: 0;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.id-char {
+  white-space: pre;
+}
+
+/* 复核表格中的 id 选择按钮 */
+.id-select {
+  padding: 2px 8px;
+  font-size: 13px;
+  border-radius: 10px;
+  background: transparent;
+}
+
+/* 采纳 id 列表：每项独立，逗号/引号/空格属于 id 本身而非分隔符 */
+.adopted {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.adopted-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.adopted-list li {
+  border: 1px solid var(--panel-edge);
+  border-radius: 10px;
+  padding: 2px 8px;
+  font-size: 13px;
+  background: #10161c;
 }
 
 .more {

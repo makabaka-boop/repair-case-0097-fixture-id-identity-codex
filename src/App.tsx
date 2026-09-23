@@ -1,4 +1,4 @@
-import { ChangeEvent, useState } from "react";
+import { ChangeEvent, FormEvent, ReactNode, useState } from "react";
 import {
   ConflictGroup,
   Fixture,
@@ -18,10 +18,12 @@ import {
   reviewFromText,
   serializePatch,
 } from "./lib/review";
+import { IdText } from "./components/IdText";
 
 interface Notice {
   kind: "ok" | "warn" | "error";
-  text: string;
+  // ReactNode：警告中嵌入逐字节渲染的 id（含空格/逗号/引号也不与正文混淆）
+  text: ReactNode;
 }
 
 /** 确定性演示补丁：链式组、端点相接、嵌套、孤立灯具各若干。 */
@@ -51,13 +53,20 @@ function demoPatch(): Fixture[] {
   return fixtures;
 }
 
+/** 冲突 id 列表：每个 id 是一个选择入口；key/data-id 均为原始 id 字符串。 */
 function IdList({ ids, onSelect }: { ids: string[]; onSelect: (id: string) => void }) {
   if (ids.length === 0) return <p className="muted">（空）</p>;
   return (
     <div className="chips">
       {ids.map((id) => (
-        <button key={id} className="chip" onClick={() => onSelect(id)}>
-          {id}
+        <button
+          key={id}
+          className="chip"
+          onClick={() => onSelect(id)}
+          data-id={id}
+          title={id}
+        >
+          <IdText id={id} />
         </button>
       ))}
     </div>
@@ -129,7 +138,15 @@ export default function App() {
     if (!engine) return;
     const f = engine.getFixture(id);
     if (!f) {
-      setNotice({ kind: "warn", text: `未找到灯具 “${id}”。` });
+      // 查找失败：只显示警告，绝不改变当前选择、试移结果与补丁
+      setNotice({
+        kind: "warn",
+        text: (
+          <>
+            未找到灯具 “<IdText id={id} />”。
+          </>
+        ),
+      });
       return;
     }
     setSelectedId(id);
@@ -138,6 +155,12 @@ export default function App() {
     // 选中即在当前位置试移一次，直接展示原位冲突
     setTrial(engine.trialMove(id, f.universe, f.start));
     setNotice(null);
+  }
+
+  /** 查找入口：逐字节使用输入框内容（不 trim、不折叠空白），全空格 id 同样可查。 */
+  function submitLookup(e: FormEvent) {
+    e.preventDefault();
+    selectFixture(lookup);
   }
 
   function runTrial() {
@@ -172,7 +195,12 @@ export default function App() {
     setReviewBaseline([]);
     setNotice({
       kind: "ok",
-      text: `已提交：${selectedId} → universe ${r.targetUniverse} 起始 ${r.targetStart}，冲突组已重算。`,
+      text: (
+        <>
+          已提交：<IdText id={selectedId} /> → universe {r.targetUniverse} 起始{" "}
+          {r.targetStart}，冲突组已重算。
+        </>
+      ),
     });
   }
 
@@ -275,8 +303,10 @@ export default function App() {
                       key={id}
                       className={id === selectedId ? "chip selected" : "chip"}
                       onClick={() => selectFixture(id)}
+                      data-id={id}
+                      title={id}
                     >
-                      {id}
+                      <IdText id={id} />
                     </button>
                   ))}
                 </div>
@@ -292,22 +322,26 @@ export default function App() {
 
         <section className="panel">
           <h2>试移灯具</h2>
-          <div className="lookup">
+          <form className="lookup" onSubmit={submitLookup}>
             <input
               value={lookup}
               onChange={(e) => setLookup(e.target.value)}
-              placeholder="按 id 查找灯具"
+              placeholder="按 id 查找灯具（逐字节匹配，含首尾/连续空格）"
+              aria-label="按 id 查找灯具"
+              spellCheck={false}
             />
-            <button onClick={() => selectFixture(lookup.trim())} disabled={!engine}>
+            <button type="submit" disabled={!engine}>
               选择
             </button>
-          </div>
+          </form>
           {selected ? (
             <>
               <dl className="fixture">
                 <div>
                   <dt>id</dt>
-                  <dd>{selected.id}</dd>
+                  <dd data-testid="selected-id">
+                    <IdText id={selected.id} />
+                  </dd>
                 </div>
                 <div>
                   <dt>universe</dt>
@@ -442,7 +476,19 @@ export default function App() {
                       <td className={p.adopted ? "ok-text" : "warn-text"}>
                         {p.adopted ? "采纳" : "拒绝"}
                       </td>
-                      <td>{p.id}</td>
+                      <td>
+                        {/* 第三个选择入口：点击 id 即在基线引擎中选中该灯具 */}
+                        <button
+                          type="button"
+                          className="id-select"
+                          data-id={p.id}
+                          title={p.id}
+                          disabled={!engine}
+                          onClick={() => selectFixture(p.id)}
+                        >
+                          <IdText id={p.id} />
+                        </button>
+                      </td>
                       <td>{formatPos(p.baseline)}</td>
                       <td>{formatPos(p.candidate)}</td>
                     </tr>
@@ -452,10 +498,21 @@ export default function App() {
             ) : (
               <p className="muted">候选与基线位置完全一致，无需修订。</p>
             )}
-            <p className="muted">
-              采纳 id（compareUtf8 序）：
-              {review.adoptedIds.length > 0 ? review.adoptedIds.join(", ") : "（无）"}
-            </p>
+            {/* 每个采纳 id 独立成项：id 自身含逗号/引号/空格时也不会与分隔符混淆 */}
+            <div className="adopted">
+              <span className="muted">采纳 id（compareUtf8 序）：</span>
+              {review.adoptedIds.length > 0 ? (
+                <ul className="adopted-list">
+                  {review.adoptedIds.map((id) => (
+                    <li key={id} data-adopted-id={id} title={id}>
+                      <IdText id={id} />
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <span className="muted">（无）</span>
+              )}
+            </div>
           </>
         ) : reviewError ? null : (
           <p className="muted">选择一份候选修订以开始复核；重选任意补丁立即撤销当前结论。</p>
